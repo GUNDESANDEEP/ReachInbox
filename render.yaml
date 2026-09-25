@@ -1,0 +1,36 @@
+services:
+  # Express Backend Web Service
+  - type: web
+    name: reachinbox-backend
+    runtime: node
+    buildCommand: cd backend && npm install && npx prisma db push && npm run build
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:./dev.db
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: reachinbox-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: reachinbox-redis
+          property: port
+      - key: WORKER_CONCURRENCY
+        value: "5"
+      - key: MIN_EMAIL_DELAY_MS
+        value: "2000"
+      - key: DEFAULT_HOURLY_LIMIT
+        value: "200"
+      - key: JWT_SECRET
+        generateValue: true
+
+  # Redis Instance for BullMQ Queues
+  - type: redis
+    name: reachinbox-redis
+    ipAllowList: [] # internal only access
+    plan: free
