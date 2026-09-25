@@ -22,7 +22,8 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
   userEmail,
   onStatusChange,
 }) => {
-  const [webhookUrl, setWebhookUrl] = useState(currentWebhookUrl || '');
+  const [webhookUrl, setWebhookUrl] = useState(currentWebhookUrl || (typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_slack_webhook') || '' : ''));
+  const [isConnected, setIsConnected] = useState(slackConnected || (typeof localStorage !== 'undefined' && localStorage.getItem('reachinbox_slack_connected') === 'true'));
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -45,6 +46,11 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
     setLoading(true);
     try {
       await connectSlackWebhook(val, userEmail);
+      setIsConnected(true);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('reachinbox_slack_connected', 'true');
+        localStorage.setItem('reachinbox_slack_webhook', val);
+      }
       setMessage({ type: 'success', text: 'Slack Webhook / Bot Token connected successfully!' });
       onStatusChange();
     } catch (err: any) {
@@ -59,7 +65,12 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
     setLoading(true);
     try {
       await disconnectSlackWebhook(userEmail);
+      setIsConnected(false);
       setWebhookUrl('');
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('reachinbox_slack_connected');
+        localStorage.removeItem('reachinbox_slack_webhook');
+      }
       setMessage({ type: 'success', text: 'Slack disconnected successfully.' });
       onStatusChange();
     } catch (err: any) {
@@ -154,7 +165,7 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-              {slackConnected ? (
+              {isConnected ? (
                 <button
                   type="button"
                   onClick={handleDisconnect}
@@ -169,7 +180,7 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
               )}
 
               <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                {slackConnected && (
+                {isConnected && (
                   <button
                     type="button"
                     onClick={handleSendTestAlert}

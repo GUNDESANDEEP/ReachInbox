@@ -90,7 +90,13 @@ export default function Home() {
       const storedEmail = localStorage.getItem('reachinbox_user_email');
       if (storedEmail) {
         const data = await getCurrentUser(storedEmail);
-        setUser(data.user);
+        const isSlackConnected = typeof localStorage !== 'undefined' && localStorage.getItem('reachinbox_slack_connected') === 'true';
+        const slackWebhookUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_slack_webhook') : null;
+        setUser({
+          ...data.user,
+          slackConnected: data.user.slackConnected || isSlackConnected,
+          slackWebhookUrl: data.user.slackWebhookUrl || slackWebhookUrl,
+        });
       }
     } catch (err) {
       console.error('Failed to load user session:', err);
