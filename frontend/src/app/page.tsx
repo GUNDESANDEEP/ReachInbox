@@ -178,7 +178,6 @@ export default function Home() {
             name: email.split('@')[0] || 'ReachInbox User',
             avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
             slackConnected: false,
-            createdAt: new Date().toISOString(),
           };
         }
         localStorage.setItem('reachinbox_user_email', activeUser.email);
@@ -216,7 +215,6 @@ export default function Home() {
           name: name || email.split('@')[0] || 'ReachInbox User',
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
           slackConnected: false,
-          createdAt: new Date().toISOString(),
         };
       }
 
