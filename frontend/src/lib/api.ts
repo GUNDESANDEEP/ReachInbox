@@ -7,8 +7,12 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 4000,
+  timeout: 3000,
 });
+
+const isStaticMode = () =>
+  typeof window !== 'undefined' &&
+  (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || !process.env.NEXT_PUBLIC_API_URL);
 
 export interface ScheduledEmailItem {
   id: string;
@@ -59,7 +63,7 @@ export interface UserProfile {
   slackWebhookUrl?: string | null;
 }
 
-// Fallback Mock Data for Static Demo Hosting (GitHub Pages)
+// Mock Data for Static Demo Hosting (GitHub Pages)
 let mockScheduledStore: ScheduledEmailItem[] = [
   {
     id: 'sched_1',
@@ -135,7 +139,7 @@ let mockSentStore: ScheduledEmailItem[] = [
   },
 ];
 
-// API Calls with Graceful Static Demo Fallbacks
+// API Calls with Smart Static Mode Handling
 export const scheduleCampaign = async (payload: {
   senderEmail: string;
   recipients: string[];
@@ -146,11 +150,7 @@ export const scheduleCampaign = async (payload: {
   hourlyLimit?: number;
   userId?: string;
 }) => {
-  try {
-    const res = await api.post('/schedule', payload);
-    return res.data;
-  } catch (err) {
-    // Static Fallback
+  if (isStaticMode()) {
     const targetDate = payload.scheduledFor ? new Date(payload.scheduledFor) : new Date();
     payload.recipients.forEach((rec, idx) => {
       mockScheduledStore.unshift({
@@ -173,9 +173,18 @@ export const scheduleCampaign = async (payload: {
       scheduledFor: targetDate.toISOString(),
     };
   }
+  try {
+    const res = await api.post('/schedule', payload);
+    return res.data;
+  } catch (err) {
+    return { message: 'Schedule created' };
+  }
 };
 
 export const fetchScheduledEmails = async (userEmail?: string): Promise<{ items: ScheduledEmailItem[]; total: number }> => {
+  if (isStaticMode()) {
+    return { items: mockScheduledStore, total: mockScheduledStore.length };
+  }
   try {
     const res = await api.get('/emails/scheduled', { params: { userEmail } });
     return res.data;
@@ -185,6 +194,9 @@ export const fetchScheduledEmails = async (userEmail?: string): Promise<{ items:
 };
 
 export const fetchSentEmails = async (userEmail?: string): Promise<{ items: ScheduledEmailItem[]; total: number }> => {
+  if (isStaticMode()) {
+    return { items: mockSentStore, total: mockSentStore.length };
+  }
   try {
     const res = await api.get('/emails/sent', { params: { userEmail } });
     return res.data;
@@ -194,10 +206,7 @@ export const fetchSentEmails = async (userEmail?: string): Promise<{ items: Sche
 };
 
 export const searchEmailsApi = async (query: string, status = 'ALL', userEmail?: string): Promise<{ items: ScheduledEmailItem[]; total: number; source: string }> => {
-  try {
-    const res = await api.get('/emails/search', { params: { q: query, status, userEmail } });
-    return res.data;
-  } catch (err) {
+  if (isStaticMode()) {
     const all = [...mockScheduledStore, ...mockSentStore];
     const q = query.toLowerCase();
     const filtered = all.filter((item) => {
@@ -207,9 +216,19 @@ export const searchEmailsApi = async (query: string, status = 'ALL', userEmail?:
     });
     return { items: filtered, total: filtered.length, source: 'database' };
   }
+  try {
+    const res = await api.get('/emails/search', { params: { q: query, status, userEmail } });
+    return res.data;
+  } catch (err) {
+    return { items: [...mockScheduledStore, ...mockSentStore], total: 5, source: 'database' };
+  }
 };
 
 export const cancelScheduledEmailApi = async (id: string) => {
+  if (isStaticMode()) {
+    mockScheduledStore = mockScheduledStore.filter((item) => item.id !== id);
+    return { message: 'Email schedule cancelled successfully', id };
+  }
   try {
     const res = await api.delete(`/emails/${id}`);
     return res.data;
@@ -220,10 +239,7 @@ export const cancelScheduledEmailApi = async (id: string) => {
 };
 
 export const fetchQueueStats = async (userEmail?: string): Promise<QueueStats> => {
-  try {
-    const res = await api.get('/queue/stats', { params: { userEmail } });
-    return res.data;
-  } catch (err) {
+  if (isStaticMode()) {
     return {
       bullMQ: {
         active: mockScheduledStore.filter((s) => s.status === 'PROCESSING').length,
@@ -246,9 +262,22 @@ export const fetchQueueStats = async (userEmail?: string): Promise<QueueStats> =
       },
     };
   }
+  try {
+    const res = await api.get('/queue/stats', { params: { userEmail } });
+    return res.data;
+  } catch (err) {
+    return {
+      bullMQ: { active: 2, completed: 48, failed: 1, delayed: 5, waiting: 2, paused: 0 },
+      dbCounts: { scheduled: 10, sent: 48, failed: 1, rateLimitHits: 2 },
+      worker: { concurrency: 5, minDelayMs: 2000, defaultHourlyLimit: 200 },
+    };
+  }
 };
 
 export const connectSlackWebhook = async (webhookUrl: string, userEmail: string) => {
+  if (isStaticMode()) {
+    return { message: 'Slack webhook connected successfully! (Demo Mode)' };
+  }
   try {
     const res = await api.post('/slack/connect', { webhookUrl, userEmail });
     return res.data;
@@ -258,6 +287,9 @@ export const connectSlackWebhook = async (webhookUrl: string, userEmail: string)
 };
 
 export const disconnectSlackWebhook = async (userEmail: string) => {
+  if (isStaticMode()) {
+    return { message: 'Slack webhook disconnected successfully.' };
+  }
   try {
     const res = await api.post('/slack/disconnect', { userEmail });
     return res.data;
@@ -267,6 +299,9 @@ export const disconnectSlackWebhook = async (userEmail: string) => {
 };
 
 export const sendTestSlackAlert = async (userEmail: string) => {
+  if (isStaticMode()) {
+    return { message: 'Test Slack alert sent successfully! (Demo Mode)' };
+  }
   try {
     const res = await api.post('/slack/test', { userEmail });
     return res.data;
@@ -276,6 +311,9 @@ export const sendTestSlackAlert = async (userEmail: string) => {
 };
 
 export const sendOtpApi = async (user: { name: string; email: string; password?: string }) => {
+  if (isStaticMode()) {
+    return { message: 'OTP sent to email', etherealPreviewUrl: 'https://ethereal.email' };
+  }
   try {
     const res = await api.post('/auth/send-otp', user);
     return res.data;
@@ -285,6 +323,17 @@ export const sendOtpApi = async (user: { name: string; email: string; password?:
 };
 
 export const verifyOtpApi = async (payload: { email: string; otp: string }) => {
+  if (isStaticMode()) {
+    return {
+      user: {
+        id: `user_${Date.now()}`,
+        email: payload.email,
+        name: payload.email.split('@')[0],
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(payload.email)}`,
+        slackConnected: false,
+      },
+    };
+  }
   try {
     const res = await api.post('/auth/verify-otp', payload);
     return res.data;
@@ -302,6 +351,17 @@ export const verifyOtpApi = async (payload: { email: string; otp: string }) => {
 };
 
 export const registerUser = async (user: { name: string; email: string; password?: string }) => {
+  if (isStaticMode()) {
+    return {
+      user: {
+        id: `user_${Date.now()}`,
+        email: user.email,
+        name: user.name,
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
+        slackConnected: false,
+      },
+    };
+  }
   try {
     const res = await api.post('/auth/register', user);
     return res.data;
@@ -319,6 +379,17 @@ export const registerUser = async (user: { name: string; email: string; password
 };
 
 export const loginUser = async (user: { email: string; password?: string }) => {
+  if (isStaticMode()) {
+    return {
+      user: {
+        id: `user_${Date.now()}`,
+        email: user.email,
+        name: user.email.split('@')[0],
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
+        slackConnected: false,
+      },
+    };
+  }
   try {
     const res = await api.post('/auth/login', user);
     return res.data;
@@ -336,6 +407,17 @@ export const loginUser = async (user: { email: string; password?: string }) => {
 };
 
 export const googleAuthLogin = async (user: { email: string; name: string; avatar?: string; googleId?: string }) => {
+  if (isStaticMode()) {
+    return {
+      user: {
+        id: user.googleId || `user_${Date.now()}`,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
+        slackConnected: false,
+      },
+    };
+  }
   try {
     const res = await api.post('/auth/google', user);
     return res.data;
@@ -353,6 +435,17 @@ export const googleAuthLogin = async (user: { email: string; name: string; avata
 };
 
 export const getCurrentUser = async (email: string): Promise<{ user: UserProfile }> => {
+  if (isStaticMode()) {
+    return {
+      user: {
+        id: 'user_current',
+        email,
+        name: (typeof localStorage !== 'undefined' && localStorage.getItem('reachinbox_user_name')) || email.split('@')[0] || 'ReachInbox User',
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
+        slackConnected: false,
+      },
+    };
+  }
   try {
     const res = await api.get('/auth/me', { params: { email } });
     return res.data;
@@ -361,7 +454,7 @@ export const getCurrentUser = async (email: string): Promise<{ user: UserProfile
       user: {
         id: 'user_current',
         email,
-        name: localStorage.getItem('reachinbox_user_name') || email.split('@')[0] || 'ReachInbox User',
+        name: (typeof localStorage !== 'undefined' && localStorage.getItem('reachinbox_user_name')) || email.split('@')[0] || 'ReachInbox User',
         avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
         slackConnected: false,
       },
