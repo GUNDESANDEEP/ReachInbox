@@ -1,0 +1,72 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String      @id @default(uuid())
+  email            String      @unique
+  name             String
+  password         String?
+  avatar           String?
+  googleId         String?
+  slackWebhookUrl  String?
+  slackAccessToken String?
+  campaigns        Campaign[]
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model Campaign {
+  id              String           @id @default(uuid())
+  title           String
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledEmails ScheduledEmail[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Sender {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  etherealUser String?
+  etherealPass String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model ScheduledEmail {
+  id                 String    @id @default(uuid())
+  campaignId         String?
+  campaign           Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  senderEmail        String
+  recipientEmail     String
+  subject            String
+  body               String
+  scheduledFor       DateTime
+  delayMs            Int       @default(2000)
+  hourlyLimit        Int       @default(200)
+  status             String    @default("PENDING") // PENDING, PROCESSING, SENT, FAILED, RATE_LIMITED
+  idempotencyKey     String    @unique
+  bullJobId          String?
+  etherealPreviewUrl String?
+  errorMessage       String?
+  sentAt             DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model RateLimitLog {
+  id          String   @id @default(uuid())
+  senderEmail String
+  hourWindow  String
+  count       Int      @default(0)
+  hitLimit    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
