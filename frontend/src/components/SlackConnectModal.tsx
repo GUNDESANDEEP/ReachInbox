@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Slack, CheckCircle2, ShieldAlert, Send, Unlink, Sparkles, Link as LinkIcon, Key } from 'lucide-react';
+import { X, Slack, CheckCircle2, ShieldAlert, Send, Unlink, Sparkles, Key } from 'lucide-react';
 import { connectSlackWebhook, disconnectSlackWebhook, sendTestSlackAlert } from '../lib/api';
 
 interface SlackConnectModalProps {
@@ -27,6 +27,17 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    const localConnected = typeof localStorage !== 'undefined' && localStorage.getItem('reachinbox_slack_connected') === 'true';
+    const localUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_slack_webhook') : null;
+    if (slackConnected || localConnected || currentWebhookUrl || localUrl) {
+      setIsConnected(true);
+      if (currentWebhookUrl || localUrl) {
+        setWebhookUrl(currentWebhookUrl || localUrl || '');
+      }
+    }
+  }, [isOpen, slackConnected, currentWebhookUrl]);
 
   if (!isOpen) return null;
 
@@ -165,37 +176,48 @@ export const SlackConnectModal: React.FC<SlackConnectModalProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-              {isConnected ? (
-                <button
-                  type="button"
-                  onClick={handleDisconnect}
-                  disabled={loading}
-                  className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl border border-rose-200 dark:border-rose-800 transition-colors flex items-center justify-center space-x-1.5"
-                >
-                  <Unlink className="h-3.5 w-3.5" />
-                  <span>Disconnect Slack</span>
-                </button>
-              ) : (
-                <span className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">Status: Not Connected</span>
-              )}
+              <div className="flex items-center space-x-2">
+                {isConnected ? (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    Status: Connected & Active
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
+                    <ShieldAlert className="h-4 w-4 text-amber-500" />
+                    Status: Not Connected
+                  </span>
+                )}
+              </div>
 
               <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
                 {isConnected && (
-                  <button
-                    type="button"
-                    onClick={handleSendTestAlert}
-                    disabled={testLoading}
-                    className="px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-all flex items-center space-x-1.5"
-                  >
-                    <Send className={`h-3.5 w-3.5 ${testLoading ? 'animate-bounce' : ''}`} />
-                    <span>Test Slack Alert</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSendTestAlert}
+                      disabled={testLoading}
+                      className="px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-all flex items-center space-x-1.5"
+                    >
+                      <Send className={`h-3.5 w-3.5 ${testLoading ? 'animate-bounce' : ''}`} />
+                      <span>Test Alert</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDisconnect}
+                      disabled={loading}
+                      className="px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl border border-rose-200 dark:border-rose-800 transition-colors flex items-center space-x-1.5"
+                    >
+                      <Unlink className="h-3.5 w-3.5" />
+                      <span>Disconnect</span>
+                    </button>
+                  </>
                 )}
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-5 py-2 text-xs font-extrabold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20 hover:shadow-emerald-500/40 flex items-center space-x-1.5 transition-all"
+                  className="px-4 py-2 text-xs font-extrabold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20 hover:shadow-emerald-500/40 flex items-center space-x-1.5 transition-all"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>{loading ? 'Saving...' : 'Save Token/Webhook'}</span>
