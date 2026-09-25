@@ -10,6 +10,7 @@ import { ComposeEmailModal } from '../components/ComposeEmailModal';
 import { SlackConnectModal } from '../components/SlackConnectModal';
 import { EmailDetailModal } from '../components/EmailDetailModal';
 import { DataStreamCanvas } from '../components/DataStreamCanvas';
+import { BullMQBoardVisualizer } from '../components/BullMQBoardVisualizer';
 import {
   UserProfile,
   ScheduledEmailItem,
@@ -814,35 +815,9 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="w-full glass-panel rounded-2xl border border-slate-200/80 p-6 shadow-md shadow-slate-200/40"
+              className="w-full"
             >
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-5 w-5 text-emerald-600" />
-                  <h3 className="text-base font-extrabold text-slate-900">Live BullMQ Board & Queue Inspection</h3>
-                </div>
-                <a
-                  href="http://localhost:5002/admin/queues"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center space-x-1.5 transition-all shadow-sm"
-                >
-                  <span>Open Standalone Bull-Board</span>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
-
-              <p className="text-xs text-slate-500 mb-4 font-medium">
-                Real-time queue visibility powered by <code className="text-brand-700 font-mono font-bold">@bull-board/express</code>. Inspect delayed jobs, job payloads, attempt retries, and worker status.
-              </p>
-
-              <div className="w-full h-[600px] rounded-xl overflow-hidden border border-slate-200 bg-white">
-                <iframe
-                  src="http://localhost:5002/admin/queues"
-                  className="w-full h-full border-none"
-                  title="BullMQ Live Board"
-                />
-              </div>
+              <BullMQBoardVisualizer />
             </motion.div>
           )}
         </AnimatePresence>

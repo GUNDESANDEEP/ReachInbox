@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, CheckCircle2, Calendar, Clock, Gauge, Mail, Sparkles, AlertCircle, FileText } from 'lucide-react';
 import { parseLeadFile } from '../lib/csvParser';
+import { scheduleCampaign } from '../lib/api';
 import confetti from 'canvas-confetti';
 
 interface ComposeEmailModalProps {
@@ -97,17 +98,7 @@ export const ComposeEmailModal: React.FC<ComposeEmailModalProps> = ({
         userEmail,
       };
 
-      const res = await fetch('http://localhost:5002/api/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to schedule campaign');
-      }
+      await scheduleCampaign(payload);
 
       // Trigger celebration confetti
       confetti({
