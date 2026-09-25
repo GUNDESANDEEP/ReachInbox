@@ -2,9 +2,10 @@ services:
   # Express Backend Web Service
   - type: web
     name: reachinbox-backend
-    runtime: node
-    buildCommand: cd backend && npm install && npx prisma db push && npm run build
-    startCommand: cd backend && npm start
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npx prisma db push && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -29,8 +30,23 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-  # Redis Instance for BullMQ Queues
+  # Next.js Frontend Dashboard Web Service
+  - type: web
+    name: reachinbox-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: reachinbox-backend
+          property: url
+          postfix: /api
+
+  # Persistent Redis Instance for BullMQ Queues
   - type: redis
     name: reachinbox-redis
-    ipAllowList: [] # internal only access
+    ipAllowList: [] # Internal network access only
     plan: free
