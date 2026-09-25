@@ -39,11 +39,7 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: reachinbox-backend
-          property: url
-          postfix: /api
+        value: https://reachinbox-backend.onrender.com/api
 
   # Persistent Redis Instance for BullMQ Queues
   - type: redis
