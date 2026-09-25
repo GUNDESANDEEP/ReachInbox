@@ -6,6 +6,7 @@ node_modules/
 .next/
 **/build/
 **/dist/
+**/out/
 
 # Logs
 logs
