@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
-export const ADMIN_BOARD_URL = (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, '') : 'http://localhost:5002') + '/admin/queues';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export const ADMIN_BOARD_URL = (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, '') : 'http://localhost:5000') + '/admin/queues';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,7 +11,7 @@ export const api = axios.create({
   timeout: 15000,
 });
 
-const isStaticMode = () =>
+export const isStaticMode = () =>
   typeof window !== 'undefined' &&
   (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app'));
 
@@ -68,7 +68,7 @@ export interface UserProfile {
 let mockScheduledStore: ScheduledEmailItem[] = [];
 let mockSentStore: ScheduledEmailItem[] = [];
 
-const getMockScheduledStore = (): ScheduledEmailItem[] => {
+export const getMockScheduledStore = (): ScheduledEmailItem[] => {
   if (typeof window === 'undefined') return mockScheduledStore;
   try {
     const raw = localStorage.getItem('reachinbox_mock_scheduled');
@@ -81,7 +81,7 @@ const getMockScheduledStore = (): ScheduledEmailItem[] => {
   return mockScheduledStore;
 };
 
-const saveMockScheduledStore = (items: ScheduledEmailItem[]) => {
+export const saveMockScheduledStore = (items: ScheduledEmailItem[]) => {
   mockScheduledStore = items;
   if (typeof window !== 'undefined') {
     try {
@@ -92,7 +92,7 @@ const saveMockScheduledStore = (items: ScheduledEmailItem[]) => {
   }
 };
 
-const getMockSentStore = (): ScheduledEmailItem[] => {
+export const getMockSentStore = (): ScheduledEmailItem[] => {
   if (typeof window === 'undefined') return mockSentStore;
   try {
     const raw = localStorage.getItem('reachinbox_mock_sent');
@@ -105,7 +105,7 @@ const getMockSentStore = (): ScheduledEmailItem[] => {
   return mockSentStore;
 };
 
-const saveMockSentStore = (items: ScheduledEmailItem[]) => {
+export const saveMockSentStore = (items: ScheduledEmailItem[]) => {
   mockSentStore = items;
   if (typeof window !== 'undefined') {
     try {
@@ -116,7 +116,7 @@ const saveMockSentStore = (items: ScheduledEmailItem[]) => {
   }
 };
 
-const processMockEmails = () => {
+export const processMockEmails = () => {
   const scheduled = getMockScheduledStore();
   const sent = getMockSentStore();
   const now = new Date();
