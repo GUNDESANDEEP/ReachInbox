@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const ENV = {
-  PORT: process.env.PORT || 5000,
+  PORT: process.env.PORT || 5002,
   NODE_ENV: process.env.NODE_ENV || 'development',
   DATABASE_URL: process.env.DATABASE_URL || 'file:./dev.db',
   REDIS_HOST: process.env.REDIS_HOST || '127.0.0.1',
