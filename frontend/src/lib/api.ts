@@ -1,18 +1,19 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
+export const ADMIN_BOARD_URL = (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, '') : 'http://localhost:5002') + '/admin/queues';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 3000,
+  timeout: 15000,
 });
 
 const isStaticMode = () =>
   typeof window !== 'undefined' &&
-  (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || !process.env.NEXT_PUBLIC_API_URL);
+  (window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app'));
 
 export interface ScheduledEmailItem {
   id: string;
@@ -63,83 +64,89 @@ export interface UserProfile {
   slackWebhookUrl?: string | null;
 }
 
-// Mock Data for Static Demo Hosting (GitHub Pages)
-let mockScheduledStore: ScheduledEmailItem[] = [
-  {
-    id: 'sched_1',
-    senderEmail: 'gundesandeep2005@gmail.com',
-    recipientEmail: 'alex.dev@techcorp.io',
-    subject: 'ReachInbox Product Demo & Architecture Deep Dive',
-    body: 'Hi Alex, following up on our scheduled email queue architecture overview.',
-    scheduledFor: new Date(Date.now() + 1000 * 60 * 15).toISOString(),
-    delayMs: 2000,
-    hourlyLimit: 200,
-    status: 'PENDING',
-    idempotencyKey: 'email_sched_1',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'sched_2',
-    senderEmail: 'gundesandeep2005@gmail.com',
-    recipientEmail: 'mitrajit@github.com',
-    subject: 'BullMQ Worker Rate Limiting Update',
-    body: 'Hi Mitrajit, the atomic hourly rate limiter key deferred this job to the top of the next hour.',
-    scheduledFor: new Date(Date.now() + 1000 * 60 * 45).toISOString(),
-    delayMs: 2000,
-    hourlyLimit: 200,
-    status: 'RATE_LIMITED',
-    idempotencyKey: 'email_sched_2',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'sched_3',
-    senderEmail: 'gundesandeep2005@gmail.com',
-    recipientEmail: 'yadav036@github.com',
-    subject: 'Ethereal SMTP Transporter Configuration',
-    body: 'Hi Gokul, test account dynamically created via Nodemailer.',
-    scheduledFor: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
-    delayMs: 2000,
-    hourlyLimit: 200,
-    status: 'PROCESSING',
-    idempotencyKey: 'email_sched_3',
-    createdAt: new Date().toISOString(),
-  },
-];
+// Persistent Store for Static Demo Hosting & Offline Fallback Mode
+let mockScheduledStore: ScheduledEmailItem[] = [];
+let mockSentStore: ScheduledEmailItem[] = [];
 
-let mockSentStore: ScheduledEmailItem[] = [
-  {
-    id: 'sent_1',
-    senderEmail: 'gundesandeep2005@gmail.com',
-    recipientEmail: 'sarah.founder@startup.co',
-    subject: 'Campaign Launch Confirmation - ReachInbox Queue',
-    body: 'Hi Sarah, your campaign was sent successfully with zero cron jobs.',
-    scheduledFor: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    sentAt: new Date(Date.now() - 1000 * 60 * 115).toISOString(),
-    delayMs: 2000,
-    hourlyLimit: 200,
-    status: 'SENT',
-    idempotencyKey: 'email_sent_1',
-    etherealPreviewUrl: 'https://ethereal.email/message/YW5ndXMuY29ubmVsbHk2NEBldGhlcmVhbC5lbWFpbA',
-    createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-  },
-  {
-    id: 'sent_2',
-    senderEmail: 'gundesandeep2005@gmail.com',
-    recipientEmail: 'lead.investor@vc.com',
-    subject: 'ReachInbox Email Scheduler Metrics Report',
-    body: 'High-volume outbound cold campaign execution log.',
-    scheduledFor: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
-    sentAt: new Date(Date.now() - 1000 * 60 * 295).toISOString(),
-    delayMs: 2000,
-    hourlyLimit: 200,
-    status: 'SENT',
-    idempotencyKey: 'email_sent_2',
-    etherealPreviewUrl: 'https://ethereal.email/message/ZGFubnkuZ3JhaGFtNjRAZXRoZXJlYWwuZW1haWw',
-    createdAt: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
-  },
-];
+const getMockScheduledStore = (): ScheduledEmailItem[] => {
+  if (typeof window === 'undefined') return mockScheduledStore;
+  try {
+    const raw = localStorage.getItem('reachinbox_mock_scheduled');
+    if (raw) {
+      mockScheduledStore = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse mockScheduledStore from localStorage', e);
+  }
+  return mockScheduledStore;
+};
 
-// API Calls with Smart Static Mode Handling
+const saveMockScheduledStore = (items: ScheduledEmailItem[]) => {
+  mockScheduledStore = items;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('reachinbox_mock_scheduled', JSON.stringify(items));
+    } catch (e) {
+      console.error('Failed to save mockScheduledStore to localStorage', e);
+    }
+  }
+};
+
+const getMockSentStore = (): ScheduledEmailItem[] => {
+  if (typeof window === 'undefined') return mockSentStore;
+  try {
+    const raw = localStorage.getItem('reachinbox_mock_sent');
+    if (raw) {
+      mockSentStore = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse mockSentStore from localStorage', e);
+  }
+  return mockSentStore;
+};
+
+const saveMockSentStore = (items: ScheduledEmailItem[]) => {
+  mockSentStore = items;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('reachinbox_mock_sent', JSON.stringify(items));
+    } catch (e) {
+      console.error('Failed to save mockSentStore to localStorage', e);
+    }
+  }
+};
+
+const processMockEmails = () => {
+  const scheduled = getMockScheduledStore();
+  const sent = getMockSentStore();
+  const now = new Date();
+
+  const remainingScheduled: ScheduledEmailItem[] = [];
+  let updatedSent = [...sent];
+  let changed = false;
+
+  for (const item of scheduled) {
+    const schedDate = new Date(item.scheduledFor);
+    if (schedDate <= now && item.status === 'PENDING') {
+      changed = true;
+      updatedSent.unshift({
+        ...item,
+        status: 'SENT',
+        sentAt: now.toISOString(),
+        etherealPreviewUrl: item.etherealPreviewUrl || `https://ethereal.email/message/${item.id}`,
+      });
+    } else {
+      remainingScheduled.push(item);
+    }
+  }
+
+  if (changed) {
+    saveMockScheduledStore(remainingScheduled);
+    saveMockSentStore(updatedSent);
+  }
+};
+
+// API Calls with Smart Static & Offline Fallback Persistence Handling
 export const scheduleCampaign = async (payload: {
   senderEmail: string;
   recipients: string[];
@@ -150,10 +157,11 @@ export const scheduleCampaign = async (payload: {
   hourlyLimit?: number;
   userId?: string;
 }) => {
-  if (isStaticMode()) {
+  const handleLocalFallback = () => {
+    const scheduled = getMockScheduledStore();
     const targetDate = payload.scheduledFor ? new Date(payload.scheduledFor) : new Date();
     payload.recipients.forEach((rec, idx) => {
-      mockScheduledStore.unshift({
+      scheduled.unshift({
         id: `sched_${Date.now()}_${idx}`,
         senderEmail: payload.senderEmail,
         recipientEmail: rec,
@@ -163,51 +171,93 @@ export const scheduleCampaign = async (payload: {
         delayMs: payload.delayMs || 2000,
         hourlyLimit: payload.hourlyLimit || 200,
         status: 'PENDING',
-        idempotencyKey: `email_${payload.senderEmail}_${rec}_${Date.now()}`,
+        idempotencyKey: `email_${payload.senderEmail}_${rec}_${Date.now()}_${idx}`,
         createdAt: new Date().toISOString(),
       });
     });
+    saveMockScheduledStore(scheduled);
     return {
-      message: `Successfully scheduled ${payload.recipients.length} email(s) (Demo Mode)`,
+      message: `Successfully scheduled ${payload.recipients.length} email(s)`,
       scheduledCount: payload.recipients.length,
       scheduledFor: targetDate.toISOString(),
     };
+  };
+
+  if (isStaticMode()) {
+    return handleLocalFallback();
   }
   try {
     const res = await api.post('/schedule', payload);
     return res.data;
   } catch (err) {
-    return { message: 'Schedule created' };
+    return handleLocalFallback();
   }
 };
 
 export const fetchScheduledEmails = async (userEmail?: string): Promise<{ items: ScheduledEmailItem[]; total: number }> => {
+  const activeEmail = userEmail || (typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_user_email') : null);
+
+  const getFilteredScheduled = () => {
+    processMockEmails();
+    let items = getMockScheduledStore();
+    if (activeEmail) {
+      const lower = activeEmail.toLowerCase();
+      items = items.filter((item) => item.senderEmail?.toLowerCase() === lower || item.recipientEmail?.toLowerCase() === lower);
+    } else {
+      items = [];
+    }
+    return { items, total: items.length };
+  };
+
   if (isStaticMode()) {
-    return { items: mockScheduledStore, total: mockScheduledStore.length };
+    return getFilteredScheduled();
   }
   try {
-    const res = await api.get('/emails/scheduled', { params: { userEmail } });
+    const res = await api.get('/emails/scheduled', { params: { userEmail: activeEmail } });
     return res.data;
   } catch (err) {
-    return { items: mockScheduledStore, total: mockScheduledStore.length };
+    return getFilteredScheduled();
   }
 };
 
 export const fetchSentEmails = async (userEmail?: string): Promise<{ items: ScheduledEmailItem[]; total: number }> => {
+  const activeEmail = userEmail || (typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_user_email') : null);
+
+  const getFilteredSent = () => {
+    processMockEmails();
+    let items = getMockSentStore();
+    if (activeEmail) {
+      const lower = activeEmail.toLowerCase();
+      items = items.filter((item) => item.senderEmail?.toLowerCase() === lower || item.recipientEmail?.toLowerCase() === lower);
+    } else {
+      items = [];
+    }
+    return { items, total: items.length };
+  };
+
   if (isStaticMode()) {
-    return { items: mockSentStore, total: mockSentStore.length };
+    return getFilteredSent();
   }
   try {
-    const res = await api.get('/emails/sent', { params: { userEmail } });
+    const res = await api.get('/emails/sent', { params: { userEmail: activeEmail } });
     return res.data;
   } catch (err) {
-    return { items: mockSentStore, total: mockSentStore.length };
+    return getFilteredSent();
   }
 };
 
 export const searchEmailsApi = async (query: string, status = 'ALL', userEmail?: string): Promise<{ items: ScheduledEmailItem[]; total: number; source: string }> => {
-  if (isStaticMode()) {
-    const all = [...mockScheduledStore, ...mockSentStore];
+  const activeEmail = userEmail || (typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_user_email') : null);
+
+  const handleLocalSearch = () => {
+    processMockEmails();
+    let all = [...getMockScheduledStore(), ...getMockSentStore()];
+    if (activeEmail) {
+      const lowerUser = activeEmail.toLowerCase();
+      all = all.filter((item) => item.senderEmail?.toLowerCase() === lowerUser || item.recipientEmail?.toLowerCase() === lowerUser);
+    } else {
+      all = [];
+    }
     const q = query.toLowerCase();
     const filtered = all.filter((item) => {
       const matchQ = !q || item.subject.toLowerCase().includes(q) || item.body.toLowerCase().includes(q) || item.recipientEmail.toLowerCase().includes(q);
@@ -215,45 +265,69 @@ export const searchEmailsApi = async (query: string, status = 'ALL', userEmail?:
       return matchQ && matchStatus;
     });
     return { items: filtered, total: filtered.length, source: 'database' };
+  };
+
+  if (isStaticMode()) {
+    return handleLocalSearch();
   }
   try {
-    const res = await api.get('/emails/search', { params: { q: query, status, userEmail } });
+    const res = await api.get('/emails/search', { params: { q: query, status, userEmail: activeEmail } });
     return res.data;
   } catch (err) {
-    return { items: [...mockScheduledStore, ...mockSentStore], total: 5, source: 'database' };
+    return handleLocalSearch();
   }
 };
 
 export const cancelScheduledEmailApi = async (id: string) => {
-  if (isStaticMode()) {
-    mockScheduledStore = mockScheduledStore.filter((item) => item.id !== id);
+  const handleLocalDelete = () => {
+    const scheduled = getMockScheduledStore().filter((item) => item.id !== id);
+    const sent = getMockSentStore().filter((item) => item.id !== id);
+    saveMockScheduledStore(scheduled);
+    saveMockSentStore(sent);
     return { message: 'Email schedule cancelled successfully', id };
+  };
+
+  if (isStaticMode()) {
+    return handleLocalDelete();
   }
   try {
     const res = await api.delete(`/emails/${id}`);
+    handleLocalDelete();
     return res.data;
   } catch (err) {
-    mockScheduledStore = mockScheduledStore.filter((item) => item.id !== id);
-    return { message: 'Email schedule cancelled successfully', id };
+    return handleLocalDelete();
   }
 };
 
 export const fetchQueueStats = async (userEmail?: string): Promise<QueueStats> => {
-  if (isStaticMode()) {
+  const activeEmail = userEmail || (typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_user_email') : null);
+
+  const getLocalStats = (): QueueStats => {
+    processMockEmails();
+    let scheduled = getMockScheduledStore();
+    let sent = getMockSentStore();
+    if (activeEmail) {
+      const lower = activeEmail.toLowerCase();
+      scheduled = scheduled.filter((item) => item.senderEmail?.toLowerCase() === lower || item.recipientEmail?.toLowerCase() === lower);
+      sent = sent.filter((item) => item.senderEmail?.toLowerCase() === lower || item.recipientEmail?.toLowerCase() === lower);
+    } else {
+      scheduled = [];
+      sent = [];
+    }
     return {
       bullMQ: {
-        active: mockScheduledStore.filter((s) => s.status === 'PROCESSING').length,
-        completed: mockSentStore.length,
-        failed: 1,
-        delayed: mockScheduledStore.filter((s) => s.status === 'PENDING' || s.status === 'RATE_LIMITED').length,
-        waiting: 2,
+        active: scheduled.filter((s) => s.status === 'PROCESSING').length,
+        completed: sent.length,
+        failed: sent.filter((s) => s.status === 'FAILED').length,
+        delayed: scheduled.filter((s) => s.status === 'PENDING' || s.status === 'RATE_LIMITED').length,
+        waiting: 0,
         paused: 0,
       },
       dbCounts: {
-        scheduled: mockScheduledStore.length,
-        sent: mockSentStore.length,
-        failed: 1,
-        rateLimitHits: mockScheduledStore.filter((s) => s.status === 'RATE_LIMITED').length,
+        scheduled: scheduled.length,
+        sent: sent.length,
+        failed: sent.filter((s) => s.status === 'FAILED').length,
+        rateLimitHits: scheduled.filter((s) => s.status === 'RATE_LIMITED').length,
       },
       worker: {
         concurrency: 5,
@@ -261,16 +335,16 @@ export const fetchQueueStats = async (userEmail?: string): Promise<QueueStats> =
         defaultHourlyLimit: 200,
       },
     };
+  };
+
+  if (isStaticMode()) {
+    return getLocalStats();
   }
   try {
-    const res = await api.get('/queue/stats', { params: { userEmail } });
+    const res = await api.get('/queue/stats', { params: { userEmail: activeEmail } });
     return res.data;
   } catch (err) {
-    return {
-      bullMQ: { active: 2, completed: 48, failed: 1, delayed: 5, waiting: 2, paused: 0 },
-      dbCounts: { scheduled: 10, sent: 48, failed: 1, rateLimitHits: 2 },
-      worker: { concurrency: 5, minDelayMs: 2000, defaultHourlyLimit: 200 },
-    };
+    return getLocalStats();
   }
 };
 
@@ -314,12 +388,8 @@ export const sendOtpApi = async (user: { name: string; email: string; password?:
   if (isStaticMode()) {
     return { message: 'OTP sent to email', etherealPreviewUrl: 'https://ethereal.email' };
   }
-  try {
-    const res = await api.post('/auth/send-otp', user);
-    return res.data;
-  } catch (err) {
-    return { message: 'OTP sent to email', etherealPreviewUrl: 'https://ethereal.email' };
-  }
+  const res = await api.post('/auth/send-otp', user);
+  return res.data;
 };
 
 export const verifyOtpApi = async (payload: { email: string; otp: string }) => {
@@ -334,20 +404,8 @@ export const verifyOtpApi = async (payload: { email: string; otp: string }) => {
       },
     };
   }
-  try {
-    const res = await api.post('/auth/verify-otp', payload);
-    return res.data;
-  } catch (err) {
-    return {
-      user: {
-        id: `user_${Date.now()}`,
-        email: payload.email,
-        name: payload.email.split('@')[0],
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(payload.email)}`,
-        slackConnected: false,
-      },
-    };
-  }
+  const res = await api.post('/auth/verify-otp', payload);
+  return res.data;
 };
 
 export const registerUser = async (user: { name: string; email: string; password?: string }) => {
@@ -362,20 +420,8 @@ export const registerUser = async (user: { name: string; email: string; password
       },
     };
   }
-  try {
-    const res = await api.post('/auth/register', user);
-    return res.data;
-  } catch (err) {
-    return {
-      user: {
-        id: `user_${Date.now()}`,
-        email: user.email,
-        name: user.name,
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
-        slackConnected: false,
-      },
-    };
-  }
+  const res = await api.post('/auth/register', user);
+  return res.data;
 };
 
 export const loginUser = async (user: { email: string; password?: string }) => {
@@ -390,20 +436,8 @@ export const loginUser = async (user: { email: string; password?: string }) => {
       },
     };
   }
-  try {
-    const res = await api.post('/auth/login', user);
-    return res.data;
-  } catch (err) {
-    return {
-      user: {
-        id: `user_${Date.now()}`,
-        email: user.email,
-        name: user.email.split('@')[0],
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
-        slackConnected: false,
-      },
-    };
-  }
+  const res = await api.post('/auth/login', user);
+  return res.data;
 };
 
 export const googleAuthLogin = async (user: { email: string; name: string; avatar?: string; googleId?: string }) => {

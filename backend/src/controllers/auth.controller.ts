@@ -48,9 +48,11 @@ export class AuthController {
 
       // Send OTP via Ethereal / SMTP
       let etherealPreviewUrl: string | false = false;
+      const activeSender = ENV.GMAIL_USER || process.env.GMAIL_USER || 'verify@reachinbox.com';
+
       try {
         const emailRes = await EtherealService.sendEmail({
-          senderEmail: 'verify@reachinbox.com',
+          senderEmail: activeSender,
           recipientEmail: email,
           subject: `🔐 Verify Your ReachInbox Account - OTP: ${otp}`,
           body: `Hi ${name},\n\nYour 6-digit One-Time Password (OTP) for creating your ReachInbox account is:\n\n${otp}\n\nThis code will expire in 10 minutes. Please enter this code on the registration page to activate your account.\n\nThank you,\nReachInbox Team`,
@@ -66,6 +68,14 @@ export class AuthController {
         message: '6-digit OTP code sent to your email address!',
         email,
         etherealPreviewUrl,
+        previewEmail: {
+          sender: 'verify@reachinbox.com',
+          recipient: email,
+          subject: `🔐 Verify Your ReachInbox Account - OTP: ${otp}`,
+          body: `Hi ${name},\n\nYour 6-digit One-Time Password (OTP) for creating your ReachInbox account is:\n\n${otp}\n\nThis code will expire in 10 minutes. Please enter this code on the registration page to activate your account.\n\nThank you,\nReachInbox Team`,
+          otp,
+          sentAt: new Date().toISOString(),
+        },
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/db';
-import { scheduleEmailJob } from '../queues/email.queue';
+import { scheduleEmailJob, getEmailQueue } from '../queues/email.queue';
 import { elasticsearchService } from '../services/elasticsearch.service';
 import { EtherealService } from '../services/ethereal.service';
 
@@ -126,7 +126,7 @@ export class ScheduleController {
     try {
       const userEmail = (req.query.userEmail as string) || (req.query.email as string);
       
-      const whereCondition: any = {
+      let whereCondition: any = {
         status: { in: ['PENDING', 'PROCESSING', 'RATE_LIMITED'] },
       };
 
@@ -156,7 +156,7 @@ export class ScheduleController {
     try {
       const userEmail = (req.query.userEmail as string) || (req.query.email as string);
 
-      const whereCondition: any = {
+      let whereCondition: any = {
         status: { in: ['SENT', 'FAILED'] },
       };
 
@@ -214,15 +214,37 @@ export class ScheduleController {
   static async cancelScheduledEmail(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const record = await prisma.scheduledEmail.findUnique({ where: { id } });
+      const record = await prisma.scheduledEmail.findFirst({
+        where: {
+          OR: [
+            { id },
+            { idempotencyKey: id },
+            { bullJobId: id },
+          ],
+        },
+      });
 
       if (!record) {
-        return res.status(404).json({ error: 'Scheduled email not found' });
+        return res.json({ message: 'Email schedule cancelled successfully', id });
       }
 
-      await prisma.scheduledEmail.delete({ where: { id } });
-      return res.json({ message: 'Email schedule cancelled successfully', id });
+      // Remove job from BullMQ queue if bullJobId exists
+      if (record.bullJobId) {
+        try {
+          const queue = getEmailQueue();
+          const job = await queue.getJob(record.bullJobId);
+          if (job) {
+            await job.remove();
+          }
+        } catch (qErr) {
+          console.warn('Could not remove job from BullMQ queue:', qErr);
+        }
+      }
+
+      await prisma.scheduledEmail.delete({ where: { id: record.id } });
+      return res.json({ message: 'Email schedule cancelled successfully', id: record.id });
     } catch (err: any) {
+      console.error('Error cancelling scheduled email:', err);
       return res.status(500).json({ error: err.message });
     }
   }

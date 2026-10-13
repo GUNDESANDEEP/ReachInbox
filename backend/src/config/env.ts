@@ -13,4 +13,6 @@ export const ENV = {
   ELASTICSEARCH_NODE: process.env.ELASTICSEARCH_NODE || 'http://localhost:9200',
   JWT_SECRET: process.env.JWT_SECRET || 'super_secret_reachinbox_key_2026',
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
+  GMAIL_USER: process.env.GMAIL_USER || '',
+  GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
 };

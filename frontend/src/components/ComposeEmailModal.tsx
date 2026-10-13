@@ -22,11 +22,18 @@ export const ComposeEmailModal: React.FC<ComposeEmailModalProps> = ({
 }) => {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
-  const [senderEmail, setSenderEmail] = useState(userEmail || 'sender@reachinbox.com');
+  const [senderEmail, setSenderEmail] = useState(userEmail || '');
   const [recipientsText, setRecipientsText] = useState('');
   const [detectedLeads, setDetectedLeads] = useState<string[]>([]);
   const [leadFileName, setLeadFileName] = useState<string | null>(null);
-  
+
+  // Sync sender email with active logged in user session
+  React.useEffect(() => {
+    if (userEmail) {
+      setSenderEmail(userEmail);
+    }
+  }, [userEmail, isOpen]);
+
   // Scheduling parameters
   const [scheduledForDate, setScheduledForDate] = useState<string>('');
   const [scheduledForTime, setScheduledForTime] = useState<string>('');

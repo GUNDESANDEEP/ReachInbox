@@ -23,6 +23,7 @@ export const ScheduledEmailsTable: React.FC<ScheduledEmailsTableProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
   const handleSearchChange = (q: string) => {
     setSearchQuery(q);
@@ -38,6 +39,8 @@ export const ScheduledEmailsTable: React.FC<ScheduledEmailsTableProps> = ({
     if (!confirm('Are you sure you want to cancel this scheduled email?')) return;
 
     setCancellingId(id);
+    setDeletedIds((prev) => new Set(prev).add(id));
+
     try {
       await cancelScheduledEmailApi(id);
       onRefresh();
@@ -80,7 +83,18 @@ export const ScheduledEmailsTable: React.FC<ScheduledEmailsTableProps> = ({
     }
   };
 
-  const filteredItems = items.filter((item) => {
+  const uniqueItems = Array.from(
+    new Map(
+      items
+        .filter((item) => !deletedIds.has(item.id) && !deletedIds.has(item.idempotencyKey))
+        .map((item) => [
+          item.id || item.idempotencyKey || `${item.recipientEmail}_${item.subject}_${item.scheduledFor}`,
+          item,
+        ])
+    ).values()
+  );
+
+  const filteredItems = uniqueItems.filter((item) => {
     if (statusFilter === 'ALL') return true;
     return item.status === statusFilter;
   });

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { prisma } from '../config/db';
+import { ENV } from '../config/env';
 
 interface TransporterCache {
   [senderEmail: string]: nodemailer.Transporter;
@@ -80,7 +81,7 @@ export class EtherealService {
       } else {
         sender = await prisma.sender.create({
           data: {
-            name: senderEmail.split('@')[0] || 'ReachInbox Sender',
+            name: senderEmail.split('@')[0] || 'Sender',
             email: senderEmail,
             etherealUser: testAccount.user,
             etherealPass: testAccount.pass,
@@ -114,20 +115,20 @@ export class EtherealService {
   }): Promise<{ messageId: string; previewUrl: string | false }> {
     const { transporter, isBrevo } = await this.getTransporter(params.senderEmail);
 
+    const activeSenderEmail = params.senderEmail || ENV.GMAIL_USER || process.env.GMAIL_USER || 'outreach@reachinbox.com';
+    const fromHeader = `"ReachInbox Campaign" <${activeSenderEmail}>`;
+
     try {
       const info = await transporter.sendMail({
-        from: `"ReachInbox Campaign" <${params.senderEmail}>`,
+        from: fromHeader,
+        replyTo: params.senderEmail,
         to: params.recipientEmail,
         subject: params.subject,
+        text: params.body,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f6f9; color: #1e293b;">
             <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-              <h2 style="color: #4f46e5; margin-top: 0;">${params.subject}</h2>
               <div style="font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${params.body}</div>
-              <hr style="margin-top: 24px; border: none; border-top: 1px solid #e2e8f0;" />
-              <p style="font-size: 12px; color: #64748b; text-align: center;">
-                Sent via <strong>ReachInbox Job Scheduler</strong> (${isBrevo ? 'Brevo Live SMTP' : 'Ethereal Fake SMTP'})
-              </p>
             </div>
           </div>
         `,
@@ -158,17 +159,14 @@ export class EtherealService {
 
       const info = await etherealTransporter.sendMail({
         from: `"ReachInbox Campaign" <${params.senderEmail}>`,
+        replyTo: params.senderEmail,
         to: params.recipientEmail,
         subject: params.subject,
+        text: params.body,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f6f9; color: #1e293b;">
             <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-              <h2 style="color: #4f46e5; margin-top: 0;">${params.subject}</h2>
               <div style="font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${params.body}</div>
-              <hr style="margin-top: 24px; border: none; border-top: 1px solid #e2e8f0;" />
-              <p style="font-size: 12px; color: #64748b; text-align: center;">
-                Sent via <strong>ReachInbox Job Scheduler</strong> (Ethereal Fallback SMTP)
-              </p>
             </div>
           </div>
         `,

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Play, Pause, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Clock, Cpu, ExternalLink, Code2, ShieldAlert } from 'lucide-react';
+import { Activity, Play, Pause, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Clock, Cpu, ExternalLink, Code2, ShieldAlert, ServerOff } from 'lucide-react';
+import { ADMIN_BOARD_URL, fetchScheduledEmails, fetchSentEmails, ScheduledEmailItem } from '../lib/api';
 
 interface BullJobMock {
   id: string;
@@ -17,67 +18,85 @@ interface BullJobMock {
 }
 
 export const BullMQBoardVisualizer: React.FC = () => {
+  const [viewMode, setViewMode] = useState<'board' | 'table'>('board');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'waiting' | 'delayed' | 'completed' | 'failed'>('all');
   const [inspectJob, setInspectJob] = useState<BullJobMock | null>(null);
   const [isQueuePaused, setIsQueuePaused] = useState(false);
+  const [isBackendLive, setIsBackendLive] = useState<boolean | null>(null);
 
-  const [jobs, setJobs] = useState<BullJobMock[]>([
-    {
-      id: 'job-9041',
-      name: 'send-email',
-      recipient: 'alex.dev@techcorp.io',
-      subject: 'ReachInbox Product Demo & Architecture Deep Dive',
-      sender: 'gundesandeep2005@gmail.com',
-      status: 'active',
-      delayMs: 2000,
-      attempts: 1,
-      timestamp: new Date().toLocaleTimeString(),
-    },
-    {
-      id: 'job-9042',
-      name: 'send-email',
-      recipient: 'mitrajit@github.com',
-      subject: 'BullMQ Worker Rate Limiting Update',
-      sender: 'gundesandeep2005@gmail.com',
-      status: 'delayed',
-      delayMs: 2700000,
-      attempts: 1,
-      timestamp: new Date().toLocaleTimeString(),
-    },
-    {
-      id: 'job-9043',
-      name: 'send-email',
-      recipient: 'yadav036@github.com',
-      subject: 'Ethereal SMTP Transporter Configuration',
-      sender: 'gundesandeep2005@gmail.com',
-      status: 'waiting',
-      delayMs: 2000,
-      attempts: 1,
-      timestamp: new Date().toLocaleTimeString(),
-    },
-    {
-      id: 'job-9039',
-      name: 'send-email',
-      recipient: 'sarah.founder@startup.co',
-      subject: 'Campaign Launch Confirmation - ReachInbox Queue',
-      sender: 'gundesandeep2005@gmail.com',
-      status: 'completed',
-      delayMs: 2000,
-      attempts: 1,
-      timestamp: new Date(Date.now() - 3600000).toLocaleTimeString(),
-    },
-    {
-      id: 'job-9038',
-      name: 'send-email',
-      recipient: 'invalid.test@domain.invalid',
-      subject: 'Failed Delivery Retry Log',
-      sender: 'gundesandeep2005@gmail.com',
-      status: 'failed',
-      delayMs: 2000,
-      attempts: 3,
-      timestamp: new Date(Date.now() - 7200000).toLocaleTimeString(),
-    },
-  ]);
+  const [jobs, setJobs] = useState<BullJobMock[]>([]);
+
+  const checkBackendStatus = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:5002/health', { method: 'GET', mode: 'cors' });
+      if (res.ok) {
+        setIsBackendLive(true);
+      } else {
+        setIsBackendLive(false);
+      }
+    } catch {
+      setIsBackendLive(false);
+    }
+  }, []);
+
+  const syncJobs = useCallback(async () => {
+    try {
+      const activeUserEmail = typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_user_email') || undefined : undefined;
+      const [schedRes, sentRes] = await Promise.all([
+        fetchScheduledEmails(activeUserEmail),
+        fetchSentEmails(activeUserEmail),
+      ]);
+
+      const mappedJobs: BullJobMock[] = [];
+
+      schedRes.items.forEach((item) => {
+        let status: 'active' | 'waiting' | 'delayed' | 'completed' | 'failed' = 'delayed';
+        if (item.status === 'PROCESSING') status = 'active';
+        else if (item.status === 'PENDING') status = 'delayed';
+        else if (item.status === 'RATE_LIMITED') status = 'waiting';
+
+        mappedJobs.push({
+          id: item.bullJobId || item.id,
+          name: 'send-email',
+          recipient: item.recipientEmail,
+          subject: item.subject,
+          sender: item.senderEmail,
+          status,
+          delayMs: item.delayMs || 2000,
+          attempts: 1,
+          timestamp: item.createdAt,
+        });
+      });
+
+      sentRes.items.forEach((item) => {
+        mappedJobs.push({
+          id: item.bullJobId || item.id,
+          name: 'send-email',
+          recipient: item.recipientEmail,
+          subject: item.subject,
+          sender: item.senderEmail,
+          status: item.status === 'SENT' ? 'completed' : 'failed',
+          delayMs: item.delayMs || 2000,
+          attempts: item.status === 'SENT' ? 1 : 3,
+          timestamp: item.sentAt || item.createdAt,
+        });
+      });
+
+      setJobs(mappedJobs);
+    } catch (e) {
+      console.error('Failed to sync BullMQ jobs:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkBackendStatus();
+    syncJobs();
+    const interval = setInterval(() => {
+      checkBackendStatus();
+      syncJobs();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [checkBackendStatus, syncJobs]);
 
   const handleRetryJob = (id: string) => {
     setJobs((prev) =>
@@ -89,7 +108,8 @@ export const BullMQBoardVisualizer: React.FC = () => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
   };
 
-  const filteredJobs = jobs.filter((j) => filterStatus === 'all' || j.status === filterStatus);
+  const uniqueJobs = Array.from(new Map(jobs.map((j) => [j.id, j])).values());
+  const filteredJobs = uniqueJobs.filter((j) => filterStatus === 'all' || j.status === filterStatus);
 
   return (
     <div className="w-full space-y-6">
@@ -114,136 +134,217 @@ export const BullMQBoardVisualizer: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center space-x-2">
+        {/* Action & View Mode Buttons */}
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+          {/* View Mode Toggle Segmented Control */}
+          <div className="p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center space-x-1">
+            <button
+              onClick={() => setViewMode('board')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                viewMode === 'board'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Activity className="h-3.5 w-3.5" />
+              <span>Bull Dashboard UI</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                viewMode === 'table'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              <span>Table View</span>
+            </button>
+          </div>
+
           <button
             onClick={() => setIsQueuePaused(!isQueuePaused)}
             className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center space-x-1.5 transition-all"
           >
             {isQueuePaused ? <Play className="h-3.5 w-3.5 text-emerald-500" /> : <Pause className="h-3.5 w-3.5 text-amber-500" />}
-            <span>{isQueuePaused ? 'Resume Queue' : 'Pause Queue'}</span>
+            <span>{isQueuePaused ? 'Resume' : 'Pause'}</span>
           </button>
 
           <a
-            href="http://localhost:5000/admin/queues"
+            href={ADMIN_BOARD_URL}
             target="_blank"
             rel="noreferrer"
             className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-purple-500/20"
           >
-            <span>Open Standalone Admin UI</span>
+            <span>Pop Out UI</span>
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-1">
-        {(['all', 'active', 'waiting', 'delayed', 'completed', 'failed'] as const).map((st) => (
-          <button
-            key={st}
-            onClick={() => setFilterStatus(st)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-              filterStatus === st
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
-                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            {st} ({st === 'all' ? jobs.length : jobs.filter((j) => j.status === st).length})
-          </button>
-        ))}
-      </div>
-
-      {/* Jobs Table */}
-      <div className="glass-panel rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              <tr>
-                <th className="py-3 px-4">Job ID</th>
-                <th className="py-3 px-4">Name</th>
-                <th className="py-3 px-4">Recipient</th>
-                <th className="py-3 px-4">Subject</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Attempts</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
-              {filteredJobs.map((job) => (
-                <tr key={job.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="py-3 px-4 font-mono font-bold text-purple-600 dark:text-purple-400">{job.id}</td>
-                  <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-300">{job.name}</td>
-                  <td className="py-3 px-4 font-mono text-slate-900 dark:text-white font-bold">{job.recipient}</td>
-                  <td className="py-3 px-4 text-slate-600 dark:text-slate-300 truncate max-w-xs">{job.subject}</td>
-                  <td className="py-3 px-4">
-                    <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold uppercase ${
-                      job.status === 'active'
-                        ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
-                        : job.status === 'completed'
-                        ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-                        : job.status === 'delayed'
-                        ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                        : job.status === 'failed'
-                        ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
-                        : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
-                    }`}>
-                      <span>{job.status}</span>
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-mono text-slate-500">{job.attempts}/3</td>
-                  <td className="py-3 px-4 text-right space-x-2">
-                    <button
-                      onClick={() => setInspectJob(job)}
-                      className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
-                      title="Inspect Payload"
-                    >
-                      <Code2 className="h-3.5 w-3.5" />
-                    </button>
-                    {job.status === 'failed' && (
-                      <button
-                        onClick={() => handleRetryJob(job.id)}
-                        className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
-                        title="Retry Job"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDeleteJob(job.id)}
-                      className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 transition-colors"
-                      title="Remove Job"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Worker Pool Status Box */}
-      <div className="glass-panel p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-        <div className="flex items-center space-x-2">
-          <Cpu className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-          <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-            Worker Threads Concurrency Pool (WORKER_CONCURRENCY = 5)
-          </h4>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-          <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs">
-            <div className="font-mono font-bold text-blue-600">Thread #1</div>
-            <div className="text-[11px] text-slate-500 mt-1 font-semibold">Active: alex.dev</div>
-          </div>
-          {[2, 3, 4, 5].map((idx) => (
-            <div key={idx} className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
-              <div className="font-mono font-bold text-slate-500">Thread #{idx}</div>
-              <div className="text-[11px] text-slate-400 mt-1 font-semibold">Idle</div>
+      {/* Main View Area */}
+      {viewMode === 'board' ? (
+        /* Live Embedded Bull Dashboard UI (@bull-board/express) */
+        <div className="relative w-full rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xl bg-[#14161f]">
+          <div className="px-4 py-2.5 bg-slate-900 text-slate-300 text-xs font-mono flex items-center justify-between border-b border-slate-800">
+            <div className="flex items-center space-x-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-extrabold text-white">Live Bull Dashboard (@bull-board/express)</span>
+              <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">{ADMIN_BOARD_URL}</span>
             </div>
-          ))}
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => {
+                  const iframe = document.getElementById('bullmq-board-iframe') as HTMLIFrameElement;
+                  if (iframe) iframe.src = iframe.src;
+                }}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] flex items-center space-x-1 transition-colors"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Reload</span>
+              </button>
+              <a
+                href={ADMIN_BOARD_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] flex items-center space-x-1 transition-colors"
+              >
+                <span>Full Window</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+
+          <iframe
+            id="bullmq-board-iframe"
+            src={ADMIN_BOARD_URL}
+            className="w-full h-[680px] border-0 bg-[#14161f]"
+            title="Bull Dashboard Admin UI"
+          />
         </div>
-      </div>
+      ) : (
+        /* Table Inspection View */
+        <div className="space-y-6">
+          {/* Filter Tabs */}
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1">
+            {(['all', 'active', 'waiting', 'delayed', 'completed', 'failed'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setFilterStatus(st)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                  filterStatus === st
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {st} ({st === 'all' ? jobs.length : jobs.filter((j) => j.status === st).length})
+              </button>
+            ))}
+          </div>
+
+          {/* Jobs Table */}
+          <div className="glass-panel rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <tr>
+                    <th className="py-3 px-4">Job ID</th>
+                    <th className="py-3 px-4">Name</th>
+                    <th className="py-3 px-4">Recipient</th>
+                    <th className="py-3 px-4">Subject</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Attempts</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
+                  {filteredJobs.map((job) => (
+                    <tr key={job.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-purple-600 dark:text-purple-400">{job.id}</td>
+                      <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-300">{job.name}</td>
+                      <td className="py-3 px-4 font-mono text-slate-900 dark:text-white font-bold">{job.recipient}</td>
+                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300 truncate max-w-xs">{job.subject}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold uppercase ${
+                          job.status === 'active'
+                            ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                            : job.status === 'completed'
+                            ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                            : job.status === 'delayed'
+                            ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                            : job.status === 'failed'
+                            ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
+                            : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
+                        }`}>
+                          <span>{job.status}</span>
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-500">{job.attempts}/3</td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        <button
+                          onClick={() => setInspectJob(job)}
+                          className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+                          title="Inspect Payload"
+                        >
+                          <Code2 className="h-3.5 w-3.5" />
+                        </button>
+                        {job.status === 'failed' && (
+                          <button
+                            onClick={() => handleRetryJob(job.id)}
+                            className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+                            title="Retry Job"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteJob(job.id)}
+                          className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 transition-colors"
+                          title="Remove Job"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Worker Pool Status Box */}
+          <div className="glass-panel p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="flex items-center space-x-2">
+              <Cpu className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                Worker Threads Concurrency Pool (WORKER_CONCURRENCY = 5)
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+              {[1, 2, 3, 4, 5].map((idx) => {
+                const activeJob = jobs.filter((j) => j.status === 'active')[idx - 1];
+                return (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-xl border text-xs ${
+                      activeJob
+                        ? 'bg-blue-500/10 border-blue-500/20 text-blue-600'
+                        : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                    }`}
+                  >
+                    <div className="font-mono font-bold">Thread #{idx}</div>
+                    <div className="text-[11px] mt-1 font-semibold truncate">
+                      {activeJob ? `Active: ${activeJob.recipient.split('@')[0]}` : 'Idle'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Inspect Job Payload Modal */}
       <AnimatePresence>

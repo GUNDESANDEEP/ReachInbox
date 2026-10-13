@@ -11,6 +11,7 @@ import { SlackConnectModal } from '../components/SlackConnectModal';
 import { EmailDetailModal } from '../components/EmailDetailModal';
 import { DataStreamCanvas } from '../components/DataStreamCanvas';
 import { BullMQBoardVisualizer } from '../components/BullMQBoardVisualizer';
+import { InAppMailPreviewModal, PreviewEmailData } from '../components/InAppMailPreviewModal';
 import {
   UserProfile,
   ScheduledEmailItem,
@@ -44,6 +45,8 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [etherealPreviewUrl, setEtherealPreviewUrl] = useState<string | null>(null);
+  const [previewEmailData, setPreviewEmailData] = useState<PreviewEmailData | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [otpSuccessMessage, setOtpSuccessMessage] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -105,10 +108,19 @@ export default function Home() {
 
   // Fetch Dashboard Stats & Emails
   const loadDashboardData = useCallback(async () => {
+    const activeUserEmail = user?.email || (typeof localStorage !== 'undefined' ? localStorage.getItem('reachinbox_user_email') : null);
+    if (!activeUserEmail) {
+      setScheduledItems([]);
+      setSentItems([]);
+      setStats(null);
+      setLoading(false);
+      setStatsLoading(false);
+      return;
+    }
+
     setLoading(true);
     setStatsLoading(true);
     try {
-      const activeUserEmail = user?.email || localStorage.getItem('reachinbox_user_email') || undefined;
       const [statsRes, scheduledRes, sentRes] = await Promise.all([
         fetchQueueStats(activeUserEmail),
         fetchScheduledEmails(activeUserEmail),
@@ -164,35 +176,24 @@ export default function Home() {
     setIsAuthLoading(true);
     try {
       if (authMode === 'signup') {
-        try {
-          const res = await sendOtpApi({ name, email, password });
-          setEtherealPreviewUrl(res.etherealPreviewUrl || null);
-          setOtpSuccessMessage(`A 6-digit OTP verification code has been sent to ${email}`);
-        } catch (apiErr) {
-          setOtpSuccessMessage(`Demo Mode: A 6-digit OTP code (e.g. 123456) sent to ${email}`);
+        const res = await sendOtpApi({ name, email, password });
+        setEtherealPreviewUrl(res.etherealPreviewUrl || null);
+        if (res.previewEmail) {
+          setPreviewEmailData(res.previewEmail);
         }
+        setOtpSuccessMessage(`A 6-digit OTP verification code has been sent to ${email}`);
+        setOtpInput(''); // Strictly start with empty 6-digit input
         setAuthStep('otp_verify');
       } else {
-        let activeUser: UserProfile;
-        try {
-          const res = await loginUser({ email, password });
-          activeUser = res.user;
-        } catch (apiErr) {
-          // Fallback to local session when backend is offline
-          activeUser = {
-            id: `user_${Date.now()}`,
-            email,
-            name: email.split('@')[0] || 'ReachInbox User',
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
-            slackConnected: false,
-          };
-        }
+        const res = await loginUser({ email, password });
+        const activeUser = res.user;
         localStorage.setItem('reachinbox_user_email', activeUser.email);
         localStorage.setItem('reachinbox_user_name', activeUser.name);
         setUser(activeUser);
       }
     } catch (err: any) {
-      setAuthError(err.response?.data?.error || err.message || 'Authentication failed');
+      const errMsg = err.response?.data?.error || err.message || 'Authentication failed';
+      setAuthError(errMsg);
     } finally {
       setIsAuthLoading(false);
     }
@@ -210,20 +211,8 @@ export default function Home() {
 
     setIsAuthLoading(true);
     try {
-      let activeUser: UserProfile;
-      try {
-        const res = await verifyOtpApi({ email, otp: otpInput.trim() });
-        activeUser = res.user;
-      } catch (apiErr) {
-        // Fallback to local session when backend is offline
-        activeUser = {
-          id: `user_${Date.now()}`,
-          email,
-          name: name || email.split('@')[0] || 'ReachInbox User',
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
-          slackConnected: false,
-        };
-      }
+      const res = await verifyOtpApi({ email, otp: otpInput.trim() });
+      const activeUser = res.user;
 
       localStorage.setItem('reachinbox_user_email', activeUser.email);
       localStorage.setItem('reachinbox_user_name', activeUser.name);
@@ -237,7 +226,8 @@ export default function Home() {
 
       setUser(activeUser);
     } catch (err: any) {
-      setAuthError(err.response?.data?.error || err.message || 'OTP Verification failed');
+      const errMsg = err.response?.data?.error || err.message || 'OTP Verification failed';
+      setAuthError(errMsg);
     } finally {
       setIsAuthLoading(false);
     }
@@ -249,15 +239,15 @@ export default function Home() {
     setOtpSuccessMessage(null);
     setIsAuthLoading(true);
     try {
-      try {
-        const res = await sendOtpApi({ name, email, password });
-        setEtherealPreviewUrl(res.etherealPreviewUrl || null);
-        setOtpSuccessMessage(`New 6-digit OTP verification code sent to ${email}`);
-      } catch (apiErr) {
-        setOtpSuccessMessage(`Demo Mode: New 6-digit OTP code sent to ${email}`);
+      const res = await sendOtpApi({ name, email, password });
+      setEtherealPreviewUrl(res.etherealPreviewUrl || null);
+      if (res.previewEmail) {
+        setPreviewEmailData(res.previewEmail);
       }
+      setOtpSuccessMessage(`New 6-digit OTP verification code sent to ${email}`);
     } catch (err: any) {
-      setAuthError(err.response?.data?.error || err.message || 'Failed to resend OTP');
+      const errMsg = err.response?.data?.error || err.message || 'Failed to resend OTP';
+      setAuthError(errMsg);
     } finally {
       setIsAuthLoading(false);
     }
@@ -348,6 +338,9 @@ export default function Home() {
     localStorage.removeItem('reachinbox_user_email');
     localStorage.removeItem('reachinbox_user_name');
     setUser(null);
+    setScheduledItems([]);
+    setSentItems([]);
+    setStats(null);
   };
 
   const handleSearchScheduled = async (query: string, status: string) => {
@@ -458,24 +451,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Ethereal Inbox Link (for testing/email preview) */}
-                {etherealPreviewUrl && (
-                  <div className="mb-4 p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/80 text-purple-900 dark:text-purple-200 text-xs flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Mail className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
-                      <span className="font-semibold text-[11px]">Testing Mode: View sent email inbox</span>
-                    </div>
-                    <a
-                      href={etherealPreviewUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] rounded-lg transition-colors"
-                    >
-                      <span>Open Inbox</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                )}
+
 
                 {/* OTP Form */}
                 <form onSubmit={handleVerifyOtpSubmit} className="space-y-4">
@@ -741,6 +717,13 @@ export default function Home() {
             )}
           </div>
         </motion.div>
+
+        <InAppMailPreviewModal
+          isOpen={isPreviewModalOpen}
+          onClose={() => setIsPreviewModalOpen(false)}
+          emailData={previewEmailData}
+          onAutoFillOtp={(otpCode) => setOtpInput(otpCode)}
+        />
       </div>
     );
   }
@@ -833,7 +816,10 @@ export default function Home() {
       <ComposeEmailModal
         isOpen={isComposeOpen}
         onClose={() => setIsComposeOpen(false)}
-        onScheduleSuccess={loadDashboardData}
+        onScheduleSuccess={() => {
+          loadDashboardData();
+          setActiveTab('scheduled');
+        }}
         userEmail={user.email}
       />
 
@@ -852,6 +838,13 @@ export default function Home() {
       <EmailDetailModal
         email={selectedEmail}
         onClose={() => setSelectedEmail(null)}
+      />
+
+      <InAppMailPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        emailData={previewEmailData}
+        onAutoFillOtp={(otpCode) => setOtpInput(otpCode)}
       />
     </div>
   );

@@ -13,7 +13,7 @@ export const initRedis = async (): Promise<RedisOptions> => {
     return initPromise;
   }
 
-  initPromise = (async () => {
+  initPromise = (async (): Promise<RedisOptions> => {
     // 1. Try external Redis
     try {
       const testClient = new Redis({
@@ -45,10 +45,9 @@ export const initRedis = async (): Promise<RedisOptions> => {
         port: ENV.REDIS_PORT,
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-        skipVersionCheck: true,
-      };
+      } as any;
       redisInstance = testClient;
-      return activeConnectionOptions;
+      return activeConnectionOptions!;
     } catch (err) {
       console.warn(`⚠️ External Redis at ${ENV.REDIS_HOST}:${ENV.REDIS_PORT} incompatible or not reachable. Spawning fallback RedisMemoryServer (Redis 7+)...`);
 
@@ -76,16 +75,15 @@ export const initRedis = async (): Promise<RedisOptions> => {
           port,
           maxRetriesPerRequest: null,
           enableReadyCheck: false,
-          skipVersionCheck: true,
-        };
+        } as any;
 
         if (redisInstance) {
           try { redisInstance.disconnect(); } catch (e) {}
           redisInstance = null;
         }
 
-        redisInstance = new Redis(activeConnectionOptions);
-        return activeConnectionOptions;
+        redisInstance = new Redis(activeConnectionOptions!);
+        return activeConnectionOptions!;
       } catch (memErr) {
         console.error('❌ Failed to start RedisMemoryServer:', memErr);
         throw memErr;

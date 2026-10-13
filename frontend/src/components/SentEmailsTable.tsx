@@ -31,7 +31,16 @@ export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({
     onSearch(searchQuery, status);
   };
 
-  const filteredItems = items.filter((item) => {
+  const uniqueItems = Array.from(
+    new Map(
+      items.map((item) => [
+        item.id || item.idempotencyKey || `${item.recipientEmail}_${item.subject}_${item.sentAt}`,
+        item,
+      ])
+    ).values()
+  );
+
+  const filteredItems = uniqueItems.filter((item) => {
     if (statusFilter === 'ALL') return true;
     return item.status === statusFilter;
   });
@@ -175,29 +184,16 @@ export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      {item.etherealPreviewUrl ? (
-                        <a
-                          href={item.etherealPreviewUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center space-x-1 px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/40 text-[11px] font-bold transition-all shadow-sm hover:scale-105"
-                        >
-                          <span>Ethereal Preview</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectEmail(item);
-                          }}
-                          className="inline-flex items-center space-x-1 px-3 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 text-[11px] font-bold transition-all shadow-sm hover:scale-105"
-                        >
-                          <Eye className="h-3 w-3" />
-                          <span>View Body</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectEmail(item);
+                        }}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold text-xs border border-purple-200 dark:border-purple-800 transition-colors shadow-sm"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>View Email</span>
+                      </button>
                     </td>
                   </motion.tr>
                 ))}
